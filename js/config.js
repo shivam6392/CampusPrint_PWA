@@ -3,8 +3,8 @@
 // ============================================
 
 const CONFIG = {
-    // API base URL — points to Render backend
-    API_BASE: 'https://campusprint-backend-test.onrender.com/api',
+    // API base URL — same origin since PWA is served from backend
+    API_BASE: '/api',
 
     // Razorpay test key
     RAZORPAY_KEY: 'REDACTED_RAZORPAY_KEY',
