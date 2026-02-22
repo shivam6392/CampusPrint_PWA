@@ -3,8 +3,8 @@
 // ============================================
 
 const CONFIG = {
-    // Note: If running entirely separate from backend, change this to your Render URL.
-    API_BASE: 'https://campusprint-backend-test.onrender.com/api',
+    // API base URL
+    API_BASE: '/api',
 
     // Fetched dynamically from backend /api/config
     FIREBASE: null,
