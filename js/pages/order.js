@@ -128,16 +128,10 @@ const OrderPage = {
             const sigRes = await API.getUploadSignature();
             const sigData = sigRes.data;
 
-            // Phase B: Direct Signed Upload to Cloudinary
-            const formData = new FormData();
-            formData.append('file', this.selectedFile);
-            formData.append('api_key', sigData.api_key);
-            formData.append('timestamp', sigData.timestamp);
-            formData.append('signature', sigData.signature);
-            formData.append('folder', sigData.folder);
-
+            // Phase B: Direct Signed Upload to Google Cloud Storage
             const xhr = new XMLHttpRequest();
-            xhr.open('POST', `https://api.cloudinary.com/v1_1/${sigData.cloud_name}/raw/upload`);
+            xhr.open('PUT', sigData.signedUrl);
+            xhr.setRequestHeader('Content-Type', 'application/pdf');
 
             xhr.upload.onprogress = (e) => {
                 if (e.lengthComputable) {
@@ -149,17 +143,13 @@ const OrderPage = {
 
             xhr.onload = () => {
                 this.isUploading = false;
-                try {
-                    const res = JSON.parse(xhr.responseText);
-                    if (xhr.status >= 200 && xhr.status < 300 && res.secure_url) {
-                        this.uploadedFileUrl = res.secure_url;
-                        this.uploadedFilePublicId = res.public_id;
-                        this.showUploadSuccess();
-                    } else {
-                        this.showUploadError(res.error?.message || 'Cloudinary Upload failed');
-                    }
-                } catch (err) {
-                    this.showUploadError('Error parsing Cloudinary response');
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    // GCP V4 write triggers return empty 200 bodies, no JSON parse needed
+                    this.uploadedFilePublicId = sigData.publicId;
+                    this.uploadedFileUrl = `https://storage.googleapis.com/campusprint_uploads/${sigData.publicId.split('/').pop()}`;
+                    this.showUploadSuccess();
+                } else {
+                    this.showUploadError(`GCP Upload failed (HTTP ${xhr.status})`);
                 }
             };
 

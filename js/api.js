@@ -56,23 +56,6 @@ const API = {
         return data;
     },
 
-    async uploadToCloudinary(file, sigData) {
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('api_key', sigData.api_key);
-        formData.append('timestamp', sigData.timestamp);
-        formData.append('signature', sigData.signature);
-        formData.append('folder', sigData.folder);
-
-        const res = await fetch(`https://api.cloudinary.com/v1_1/${sigData.cloud_name}/image/upload`, {
-            method: 'POST',
-            body: formData
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error?.message || 'Cloudinary Default Upload failed');
-        return data;
-    },
-
     async createOrder(pdfUrl, publicId, originalName, copies, color, idempotencyKey) {
         const res = await fetch(`${CONFIG.API_BASE}/print/orders`, {
             method: 'POST',
