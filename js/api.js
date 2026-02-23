@@ -64,7 +64,7 @@ const API = {
         formData.append('signature', sigData.signature);
         formData.append('folder', sigData.folder);
 
-        const res = await fetch(`https://api.cloudinary.com/v1_1/${sigData.cloud_name}/raw/upload`, {
+        const res = await fetch(`https://api.cloudinary.com/v1_1/${sigData.cloud_name}/image/upload`, {
             method: 'POST',
             body: formData
         });
