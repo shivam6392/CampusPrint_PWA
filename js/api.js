@@ -46,20 +46,41 @@ const API = {
         return data;
     },
 
-    // ── Print ───────────────────────────────
-    async uploadPDF(file, copies, color) {
-        const formData = new FormData();
-        formData.append('pdf', file);
-        formData.append('copies', copies);
-        formData.append('color', color);
+    // ── Print (Direct-to-Cloud) ───────────────────────────────
+    async getUploadSignature() {
+        const res = await fetch(`${CONFIG.API_BASE}/print/upload-signature`, {
+            headers: this._headers()
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Signature fetch failed');
+        return data;
+    },
 
-        const res = await fetch(`${CONFIG.API_BASE}/print/upload`, {
+    async uploadToCloudinary(file, sigData) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('api_key', sigData.api_key);
+        formData.append('timestamp', sigData.timestamp);
+        formData.append('signature', sigData.signature);
+        formData.append('folder', sigData.folder);
+
+        const res = await fetch(`https://api.cloudinary.com/v1_1/${sigData.cloud_name}/raw/upload`, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
             body: formData
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.message || 'Upload failed');
+        if (!res.ok) throw new Error(data.error?.message || 'Cloudinary Default Upload failed');
+        return data;
+    },
+
+    async createOrder(pdfUrl, publicId, originalName, copies, color, idempotencyKey) {
+        const res = await fetch(`${CONFIG.API_BASE}/print/orders`, {
+            method: 'POST',
+            headers: this._headers(),
+            body: JSON.stringify({ pdfUrl, publicId, originalName, copies, color, idempotencyKey })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Secure Order mapping failed');
         return data;
     },
 

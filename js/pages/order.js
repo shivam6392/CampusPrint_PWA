@@ -4,7 +4,8 @@
 
 const OrderPage = {
     selectedFile: null,
-    uploadedFileId: null,
+    uploadedFileUrl: null,
+    uploadedFilePublicId: null,
     isUploading: false,
 
     render() {
@@ -62,7 +63,8 @@ const OrderPage = {
 
     init() {
         this.selectedFile = null;
-        this.uploadedFileId = null;
+        this.uploadedFileUrl = null;
+        this.uploadedFilePublicId = null;
         this.isUploading = false;
 
         const btnSelectFile = document.getElementById('btnSelectFile');
@@ -98,7 +100,8 @@ const OrderPage = {
             return;
         }
         this.selectedFile = file;
-        this.uploadedFileId = null;
+        this.uploadedFileUrl = null;
+        this.uploadedFilePublicId = null;
 
         document.getElementById('uploadProgressRow').style.display = 'flex';
         document.getElementById('progressFileName').textContent = file.name;
@@ -113,54 +116,64 @@ const OrderPage = {
         this.startUpload();
     },
 
-    startUpload() {
+    async startUpload() {
         this.isUploading = true;
-
-        // Auto-upload default values matching logic parity
-        const defaultCopies = 1;
-        const defaultColor = false;
 
         const progressCircle = document.getElementById('progressCircle');
         const progressText = document.getElementById('progressStatusText');
 
-        const formData = new FormData();
-        formData.append('pdf', this.selectedFile);
-        formData.append('copies', defaultCopies);
-        formData.append('color', defaultColor);
+        try {
+            // Phase A: Fetch Signature
+            progressText.textContent = 'Authenticating...';
+            const sigRes = await API.getUploadSignature();
+            const sigData = sigRes.data;
 
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', `${CONFIG.API_BASE}/print/upload`);
-        xhr.setRequestHeader('Authorization', `Bearer ${localStorage.getItem('token')}`);
+            // Phase B: Direct Signed Upload to Cloudinary
+            const formData = new FormData();
+            formData.append('file', this.selectedFile);
+            formData.append('api_key', sigData.api_key);
+            formData.append('timestamp', sigData.timestamp);
+            formData.append('signature', sigData.signature);
+            formData.append('folder', sigData.folder);
 
-        xhr.upload.onprogress = (e) => {
-            if (e.lengthComputable) {
-                const pct = Math.round((e.loaded / e.total) * 100);
-                progressCircle.style.strokeDasharray = `${pct}, 100`;
-                progressText.textContent = `Uploading... ${pct}%`;
-            }
-        };
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', `https://api.cloudinary.com/v1_1/${sigData.cloud_name}/raw/upload`);
 
-        xhr.onload = () => {
-            this.isUploading = false;
-            try {
-                const res = JSON.parse(xhr.responseText);
-                if (xhr.status >= 200 && xhr.status < 300) {
-                    this.uploadedFileId = res.data._id;
-                    this.showUploadSuccess();
-                } else {
-                    this.showUploadError(res.message || 'Upload failed');
+            xhr.upload.onprogress = (e) => {
+                if (e.lengthComputable) {
+                    const pct = Math.round((e.loaded / e.total) * 100);
+                    progressCircle.style.strokeDasharray = `${pct}, 100`;
+                    progressText.textContent = `Uploading... ${pct}%`;
                 }
-            } catch (err) {
-                this.showUploadError('Error parsing response');
-            }
-        };
+            };
 
-        xhr.onerror = () => {
+            xhr.onload = () => {
+                this.isUploading = false;
+                try {
+                    const res = JSON.parse(xhr.responseText);
+                    if (xhr.status >= 200 && xhr.status < 300 && res.secure_url) {
+                        this.uploadedFileUrl = res.secure_url;
+                        this.uploadedFilePublicId = res.public_id;
+                        this.showUploadSuccess();
+                    } else {
+                        this.showUploadError(res.error?.message || 'Cloudinary Upload failed');
+                    }
+                } catch (err) {
+                    this.showUploadError('Error parsing Cloudinary response');
+                }
+            };
+
+            xhr.onerror = () => {
+                this.isUploading = false;
+                this.showUploadError('Network error during upload');
+            };
+
+            xhr.send(formData);
+
+        } catch (error) {
             this.isUploading = false;
-            this.showUploadError('Network error');
-        };
-
-        xhr.send(formData);
+            this.showUploadError(error.message || 'Failed to initialize upload');
+        }
     },
 
     showUploadSuccess() {
@@ -181,7 +194,7 @@ const OrderPage = {
     },
 
     async proceedToPayment() {
-        if (!this.uploadedFileId) return;
+        if (!this.uploadedFileUrl || !this.uploadedFilePublicId) return;
 
         const copies = parseInt(document.getElementById('copiesInput').value) || 1;
         const isColor = document.querySelector('.toggle-option.active').dataset.color === 'true';
@@ -191,11 +204,22 @@ const OrderPage = {
         btn.textContent = 'Processing...';
 
         try {
-            // Replicate OrderFragment.kt API update step
-            const data = await API.updateOrder(this.uploadedFileId, copies, isColor);
+            // Auto-generate idempotency key
+            const idempotencyKey = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2);
 
-            // Pass exact amount to payment screen matching Android Intent extra
+            // Phase C: Secure Order Creation
+            const data = await API.createOrder(
+                this.uploadedFileUrl,
+                this.uploadedFilePublicId,
+                this.selectedFile.name,
+                copies,
+                isColor,
+                idempotencyKey
+            );
+
+            // Store ID and Amount to pass to payment page
             localStorage.setItem('pendingPaymentAmount', data.data.totalCost || '0');
+            localStorage.setItem('pendingOrderId', data.data._id);
 
             setTimeout(() => {
                 window.location.hash = `#payment`;
